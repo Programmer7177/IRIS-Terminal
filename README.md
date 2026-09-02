@@ -3,9 +3,6 @@
 A BTC signal / evidence / forecast terminal. Next.js frontend on Supabase
 Postgres, fed by a separate Python ingestion worker.
 
-Visual reference: `../IRIS BTC Terminal v4.local.html`.
-Implementation plan: `~/.claude/plans/aku-mau-membuat-sebuah-glowing-peacock.md`.
-
 ## Run it
 
 ```bash
