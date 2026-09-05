@@ -58,7 +58,8 @@ export function bucketShares(buckets: FeeBucket[]): { label: string; pct: number
  * it green/red would assert a directional claim the number does not support, so
  * it stays neutral and only the sign is shown.
  */
-export const fmtDifficultyChange = (pct: number) => fmtPct(pct, true, 2);
+export const fmtDifficultyChange = (pct: number | null) =>
+  pct == null ? '—' : fmtPct(pct, true, 2);
 
 /** `912.4 EH/s`. */
 export const fmtHashrate = (ehs: number) => `${ehs.toFixed(1)} EH/s`;

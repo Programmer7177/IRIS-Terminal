@@ -56,8 +56,8 @@ export default async function GlobalSentimentPage({
         events={events}
         whale={whale}
       />
-      <WhaleWire initial={whale} limit={WHALE_LIMIT} />
       <GlobalSentimentPanel events={events} news={news} activeCats={activeCats} />
+      <WhaleWire initial={whale} limit={WHALE_LIMIT} />
     </div>
   );
 }

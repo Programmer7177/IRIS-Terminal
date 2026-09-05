@@ -50,7 +50,7 @@ export function MempoolGauge({ network }: { network: Envelope<ChainNetworkData> 
     <Panel style={{ flex: 1, minWidth: 0 }}>
       <PanelHeader
         title="MEMPOOL"
-        note="as seen by mempool.space · one node's view"
+        note="blockchair aggregate · backlog banded at the suggested rate"
         right={<MockBadge env={network} />}
       />
 

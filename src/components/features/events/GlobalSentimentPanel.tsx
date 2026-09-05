@@ -7,7 +7,7 @@ import type { EventCategory, GeoEvent } from '@/lib/features/geopoliticalEvents'
 import type { NewsArticle } from '@/lib/features/news';
 import { WorldMap, type DetailPayload } from './WorldMap';
 import { GlobeMap } from './GlobeMap';
-import { EventWire } from './EventWire';
+import { EventNewsRail } from './EventNewsRail';
 import { EventDetail } from './EventDetail';
 import { EventLayerToggle } from './EventLayerToggle';
 
@@ -112,14 +112,21 @@ export function GlobalSentimentPanel({ events, news, activeCats }: GlobalSentime
           ) : null}
         </div>
 
-        <div style={{ flex: '1 1 320px', minWidth: 0, background: 'var(--panel)' }}>
-          <EventWire
+        <div
+          style={{
+            flex: '1 1 300px',
+            minWidth: 0,
+            maxHeight: 560,
+            background: 'var(--panel)',
+          }}
+        >
+          <EventNewsRail
             events={events.data}
             news={news.data}
+            activeCats={activeCats}
             selectedKey={selectedKey}
             onSelectKey={setSelectedKey}
             onOpenDetail={setDetail}
-            activeCats={activeCats}
           />
         </div>
       </div>

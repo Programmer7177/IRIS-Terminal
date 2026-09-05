@@ -103,7 +103,12 @@ export function DifficultyCard({ network }: { network: Envelope<ChainNetworkData
           tone={paceTone}
           sub={blocks24h == null ? 'blockchair unavailable' : `${paceWord} · target ${TARGET_BLOCKS_24H}`}
         />
-        <KeyValueRow label="PREVIOUS RETARGET" value={fmtDifficultyChange(d.previousChangePct)} tone="mut" sub="actual" />
+        <KeyValueRow
+          label="PREVIOUS RETARGET"
+          value={fmtDifficultyChange(d.previousChangePct)}
+          tone="mut"
+          sub={d.previousChangePct == null ? 'no keyless source' : 'actual'}
+        />
       </div>
 
       <SourceFootnote env={network} />

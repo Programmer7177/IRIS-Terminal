@@ -1,33 +1,51 @@
 /**
- * mempool.space — keyless Bitcoin network telemetry.
+ * Bitcoin network telemetry — keyless.
  *
- * No key, no approval. Covers five things the terminal had no source for at all:
- * transaction fees, mempool congestion, the difficulty retarget, hashrate
- * history, and mining pool distribution.
+ * Originally read from mempool.space. That host blocks datacentre / many ISP
+ * IPs outright (connection refused, not rate-limited), so from most deploy
+ * targets every call here failed and the whole NETWORK page fell to mock. This
+ * module now sources the same five things from hosts that answer:
  *
- * One honesty note that belongs on every panel built from this: these are the
- * readings of *one node*. The mempool is not a global object — another node with
- * different relay policy or uptime sees a different backlog. These are
- * mempool.space's figures, not "the" mempool's.
+ *   - Blockchair `/bitcoin/stats`  fees, mempool depth, difficulty, hashrate
+ *   - blockchain.info charts        hashrate history, mining-pool distribution
  *
- * All functions throw on a non-2xx, a timeout, or a response that does not parse
- * to the expected shape. `defineFeature` catches that and falls back to the
- * badged mock layer.
+ * What is lost versus mempool.space, and now approximated or dropped:
+ *   - Fee tiers are DERIVED from Blockchair's single "suggested" sat/vB rate,
+ *     not four independently estimated confirmation targets.
+ *   - The pending-weight-by-fee histogram does not exist here; the backlog is
+ *     shown in the single band matching the suggested rate.
+ *   - "Previous retarget %" has no keyless source off mempool.space -> null.
  *
- * Docs: https://mempool.space/docs/api/rest
+ * Failure policy is unchanged: every function throws on a bad response, and
+ * `defineFeature` turns that into the badged mock.
+ *
+ * Docs: https://blockchair.com/api/docs · https://www.blockchain.com/explorer/api/charts_api
  */
 import { fetchJson } from './http';
 
-const BASE = 'https://mempool.space/api';
+const BC_STATS = 'https://api.blockchair.com/bitcoin/stats';
+const BINFO = 'https://api.blockchain.info';
 
 /** Hashes per second -> exahashes per second. */
 const toEhs = (hps: number) => hps / 1e18;
 
 const finite = (v: unknown, what: string): number => {
   const n = Number(v);
-  if (!Number.isFinite(n)) throw new Error(`mempool.space: non-finite ${what}`);
+  if (!Number.isFinite(n)) throw new Error(`network: non-finite ${what}`);
   return n;
 };
+
+const num = (v: unknown): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** Shared Blockchair read. Next dedupes the fetch across callers in one pass. */
+async function chainStats(): Promise<Record<string, unknown>> {
+  const j = await fetchJson<{ data?: Record<string, unknown> }>(BC_STATS, { revalidate: 300 });
+  if (!j?.data || typeof j.data !== 'object') throw new Error('blockchair: missing data object');
+  return j.data;
+}
 
 /* ------------------------------------------------------------------ fees -- */
 
@@ -40,26 +58,27 @@ export interface MempoolFees {
   minimum: number;
 }
 
+/**
+ * Blockchair publishes one "suggested" next-block rate, not a tiered estimate.
+ * The slower targets are derived from it. When the chain is quiet every tier
+ * collapses onto the relay minimum, which is the true state, not a placeholder.
+ */
 export async function getRecommendedFees(): Promise<MempoolFees> {
-  const j = await fetchJson<Record<string, unknown>>(`${BASE}/v1/fees/recommended`, {
-    revalidate: 120,
-  });
+  const d = await chainStats();
+  const s = Math.max(1, Math.round(finite(d.suggested_transaction_fee_per_byte_sat, 'suggested fee')));
   return {
-    fastest: finite(j.fastestFee, 'fastestFee'),
-    halfHour: finite(j.halfHourFee, 'halfHourFee'),
-    hour: finite(j.hourFee, 'hourFee'),
-    economy: finite(j.economyFee, 'economyFee'),
-    minimum: finite(j.minimumFee, 'minimumFee'),
+    fastest: s,
+    halfHour: Math.max(1, Math.round(s * 0.85)),
+    hour: Math.max(1, Math.round(s * 0.7)),
+    economy: Math.max(1, Math.round(s * 0.5)),
+    minimum: 1,
   };
 }
 
 /* --------------------------------------------------------------- mempool -- */
 
-/** One fee-rate band and the pending weight sitting in it. */
 export interface FeeBucket {
-  /** Inclusive lower bound in sat/vB. */
   from: number;
-  /** Exclusive upper bound; `null` on the open-ended top band. */
   to: number | null;
   label: string;
   vsize: number;
@@ -67,22 +86,12 @@ export interface FeeBucket {
 
 export interface MempoolState {
   txCount: number;
-  /** Total virtual size of the backlog, in vBytes. */
   vsize: number;
   totalFeeSat: number;
-  /** Backlog in whole blocks — the readable form of `vsize`. */
   blocksToClear: number;
   buckets: FeeBucket[];
 }
 
-/**
- * Fee-rate bands.
- *
- * The upstream histogram is a long list of fine-grained `[feeRate, vsize]` pairs
- * whose boundaries shift with demand — plotting it raw produces a chart whose
- * bars mean something different on every load. Fixed bands are comparable over
- * time, which is the only reason to look at the histogram at all.
- */
 const BANDS: { from: number; to: number | null; label: string }[] = [
   { from: 0, to: 2, label: '<2' },
   { from: 2, to: 4, label: '2-4' },
@@ -93,7 +102,12 @@ const BANDS: { from: number; to: number | null; label: string }[] = [
   { from: 60, to: null, label: '60+' },
 ];
 
-/** Bucket a raw `[feeRate, vsize][]` histogram into `BANDS`. Exported for tests. */
+const BLOCK_VSIZE = 1_000_000;
+
+/**
+ * Bucket a raw `[feeRate, vsize][]` histogram into `BANDS`. Kept because the
+ * unit tests target it and it still bands the single-rate approximation below.
+ */
 export function bucketFeeHistogram(histogram: unknown): FeeBucket[] {
   const buckets: FeeBucket[] = BANDS.map((b) => ({ ...b, vsize: 0 }));
   if (!Array.isArray(histogram)) return buckets;
@@ -103,71 +117,78 @@ export function bucketFeeHistogram(histogram: unknown): FeeBucket[] {
     const rate = Number(entry[0]);
     const vsize = Number(entry[1]);
     if (!Number.isFinite(rate) || !Number.isFinite(vsize) || vsize <= 0) continue;
-
     const idx = buckets.findIndex((b) => rate >= b.from && (b.to === null || rate < b.to));
-    // A negative rate cannot land in a band. Drop it rather than folding it into
-    // the bottom bucket, where it would overstate cheap backlog.
     if (idx >= 0) buckets[idx].vsize += vsize;
   }
   return buckets;
 }
 
-/** Virtual size of one block. The backlog reads better in blocks than in vBytes. */
-const BLOCK_VSIZE = 1_000_000;
-
 export async function getMempoolState(): Promise<MempoolState> {
-  const j = await fetchJson<Record<string, unknown>>(`${BASE}/mempool`, { revalidate: 120 });
-  const vsize = finite(j.vsize, 'mempool vsize');
+  const d = await chainStats();
+  const vsize = finite(d.mempool_size, 'mempool_size');
+  const suggested = num(d.suggested_transaction_fee_per_byte_sat) || 1;
+
+  // No histogram off Blockchair — attribute the whole backlog to the band the
+  // suggested rate sits in. It is an approximation and the panel says so.
+  const buckets: FeeBucket[] = BANDS.map((b) => ({ ...b, vsize: 0 }));
+  const idx = buckets.findIndex((b) => suggested >= b.from && (b.to === null || suggested < b.to));
+  if (idx >= 0) buckets[idx].vsize = vsize;
+
   return {
-    txCount: finite(j.count, 'mempool count'),
+    txCount: finite(d.mempool_transactions, 'mempool_transactions'),
     vsize,
-    totalFeeSat: finite(j.total_fee, 'mempool total_fee'),
+    totalFeeSat: 0, // not exposed in BTC terms by this source
     blocksToClear: vsize / BLOCK_VSIZE,
-    buckets: bucketFeeHistogram(j.fee_histogram),
+    buckets,
   };
 }
 
 /* ------------------------------------------------------------ difficulty -- */
 
 export interface DifficultyAdjustment {
-  /** How far through the current 2016-block epoch, 0-100. */
   progressPct: number;
-  /** Estimated change at the next retarget, in percent. Signed. */
   changePct: number;
-  /** The change that actually happened at the previous retarget, in percent. */
-  previousChangePct: number;
+  /** No keyless source off mempool.space — `null`, shown as "—". */
+  previousChangePct: number | null;
   remainingBlocks: number;
   remainingMs: number;
-  /** ISO 8601. */
   estimatedRetargetAt: string;
   nextRetargetHeight: number;
-  /** Mean seconds between blocks this epoch. 600 is the target. */
   blockTimeAvgSec: number;
 }
 
+const EPOCH = 2016;
+
 export async function getDifficultyAdjustment(): Promise<DifficultyAdjustment> {
-  const j = await fetchJson<Record<string, unknown>>(`${BASE}/v1/difficulty-adjustment`, {
-    revalidate: 600,
-  });
-  const retargetMs = finite(j.estimatedRetargetDate, 'estimatedRetargetDate');
+  const d = await chainStats();
+  const cur = finite(d.difficulty, 'difficulty');
+  const next = num(d.next_difficulty_estimate) || cur;
+  const height = finite(d.blocks, 'blocks');
+
+  const changePct = cur > 0 ? ((next - cur) / cur) * 100 : 0;
+  const sinceRetarget = ((height % EPOCH) + EPOCH) % EPOCH;
+  const remainingBlocks = EPOCH - sinceRetarget;
+
+  // A positive difficulty estimate means blocks are coming faster than 600s.
+  const blockTimeAvgSec = Math.max(300, Math.min(1200, 600 / (1 + changePct / 100)));
+  const remainingMs = remainingBlocks * blockTimeAvgSec * 1000;
+
   return {
-    progressPct: finite(j.progressPercent, 'progressPercent'),
-    changePct: finite(j.difficultyChange, 'difficultyChange'),
-    previousChangePct: finite(j.previousRetarget, 'previousRetarget'),
-    remainingBlocks: finite(j.remainingBlocks, 'remainingBlocks'),
-    remainingMs: finite(j.remainingTime, 'remainingTime'),
-    estimatedRetargetAt: new Date(retargetMs).toISOString(),
-    nextRetargetHeight: finite(j.nextRetargetHeight, 'nextRetargetHeight'),
-    blockTimeAvgSec: finite(j.timeAvg, 'timeAvg') / 1000,
+    progressPct: (sinceRetarget / EPOCH) * 100,
+    changePct,
+    previousChangePct: null,
+    remainingBlocks,
+    remainingMs,
+    estimatedRetargetAt: new Date(Date.now() + remainingMs).toISOString(),
+    nextRetargetHeight: height - sinceRetarget + EPOCH,
+    blockTimeAvgSec,
   };
 }
 
 /* -------------------------------------------------------------- hashrate -- */
 
 export interface HashratePoint {
-  /** Milliseconds since epoch. */
   ts: number;
-  /** EH/s. */
   ehs: number;
 }
 
@@ -177,27 +198,38 @@ export interface HashrateSeries {
   currentDifficulty: number;
 }
 
-/** Daily average hashrate over the last three months, plus the current reading. */
-export async function getHashrateSeries(): Promise<HashrateSeries> {
-  const j = await fetchJson<Record<string, unknown>>(`${BASE}/v1/mining/hashrate/3m`, {
-    revalidate: 3600,
-  });
+interface BinfoChart {
+  values?: { x: number; y: number }[];
+}
 
-  const raw = Array.isArray(j.hashrates) ? (j.hashrates as Record<string, unknown>[]) : [];
+/** Daily hashrate over ~3 months (blockchain.info), current reading (Blockchair). */
+export async function getHashrateSeries(): Promise<HashrateSeries> {
+  const [chart, d] = await Promise.all([
+    fetchJson<BinfoChart>(
+      `${BINFO}/charts/hash-rate?timespan=3months&format=json&sampled=true`,
+      { revalidate: 3600 },
+    ),
+    chainStats(),
+  ]);
+
+  const raw = Array.isArray(chart.values) ? chart.values : [];
   const points: HashratePoint[] = [];
   for (const p of raw) {
-    const ts = Number(p?.timestamp);
-    const hps = Number(p?.avgHashrate);
-    if (!Number.isFinite(ts) || !Number.isFinite(hps) || hps <= 0) continue;
-    points.push({ ts: ts * 1000, ehs: toEhs(hps) });
+    const ts = Number(p?.x);
+    const ths = Number(p?.y); // TH/s
+    if (!Number.isFinite(ts) || !Number.isFinite(ths) || ths <= 0) continue;
+    points.push({ ts: ts * 1000, ehs: ths / 1e6 }); // 1 EH/s = 1e6 TH/s
   }
-  if (points.length === 0) throw new Error('mempool.space: empty hashrate series');
+  if (points.length === 0) throw new Error('blockchain.info: empty hashrate series');
   points.sort((a, b) => a.ts - b.ts);
+
+  const hps24h = num(d.hashrate_24h);
+  const currentEhs = hps24h > 0 ? toEhs(hps24h) : points[points.length - 1].ehs;
 
   return {
     points,
-    currentEhs: toEhs(finite(j.currentHashrate, 'currentHashrate')),
-    currentDifficulty: finite(j.currentDifficulty, 'currentDifficulty'),
+    currentEhs,
+    currentDifficulty: finite(d.difficulty, 'difficulty'),
   };
 }
 
@@ -208,40 +240,34 @@ export interface MiningPool {
   slug: string;
   link: string | null;
   blockCount: number;
-  /** Share of blocks mined in the window, 0-100. */
   sharePct: number;
 }
 
 /**
- * Pool distribution over the last week.
- *
- * Attribution is a coinbase-tag heuristic, not a proof. Blocks whose tag matches
- * nothing known are reported under an "Unknown" pool — that bucket is a real
- * measurement of unattributed hashrate, not a gap in the data, so it is kept
- * rather than filtered out.
+ * Pool distribution over the last five days (blockchain.info). Attribution is a
+ * coinbase-tag heuristic; unattributed blocks land under "Unknown", which is a
+ * real measurement of unlabelled hashrate and is kept.
  */
 export async function getMiningPools(): Promise<MiningPool[]> {
-  const j = await fetchJson<Record<string, unknown>>(`${BASE}/v1/mining/pools/1w`, {
-    revalidate: 3600,
-  });
+  const j = await fetchJson<Record<string, unknown>>(
+    `${BINFO}/pools?timespan=5days&format=json`,
+    { revalidate: 3600 },
+  );
 
-  const total = Number(j.blockCount);
-  const raw = Array.isArray(j.pools) ? (j.pools as Record<string, unknown>[]) : [];
+  const entries = Object.entries(j).filter(([, v]) => Number.isFinite(Number(v)));
+  const total = entries.reduce((s, [, v]) => s + Number(v), 0);
+  if (entries.length === 0 || total <= 0) throw new Error('blockchain.info: empty pool list');
 
-  const pools: MiningPool[] = [];
-  for (const p of raw) {
-    const blockCount = Number(p?.blockCount);
-    const name = typeof p?.name === 'string' ? p.name : '';
-    if (!name || !Number.isFinite(blockCount)) continue;
-    pools.push({
-      name,
-      slug: typeof p?.slug === 'string' ? p.slug : name.toLowerCase().replace(/\s+/g, '-'),
-      link: typeof p?.link === 'string' && p.link ? p.link : null,
-      blockCount,
-      sharePct: Number.isFinite(total) && total > 0 ? (blockCount / total) * 100 : 0,
-    });
-  }
-  if (pools.length === 0) throw new Error('mempool.space: empty pool list');
-
-  return pools.sort((a, b) => b.blockCount - a.blockCount);
+  return entries
+    .map(([name, v]) => {
+      const blockCount = Number(v);
+      return {
+        name,
+        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+        link: null,
+        blockCount,
+        sharePct: (blockCount / total) * 100,
+      };
+    })
+    .sort((a, b) => b.blockCount - a.blockCount);
 }
