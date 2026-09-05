@@ -8,13 +8,15 @@ export interface PriceChartLargeProps {
   ohlcv: Envelope<OhlcvCandle[]>;
   /** Optional support/resistance envelope — drawn as horizontal guide lines. */
   levels?: Envelope<SupportResistanceLevels>;
+  /** Active timeframe label (`1D`..`ALL`), shown in the panel note. */
+  timeframe?: string;
 }
 
 const W = 800;
 const H = 260;
 const PAD = 8;
 
-export function PriceChartLarge({ ohlcv, levels }: PriceChartLargeProps) {
+export function PriceChartLarge({ ohlcv, levels, timeframe }: PriceChartLargeProps) {
   const candles = ohlcv.data;
   const n = candles.length;
   const latest = candles[n - 1];
@@ -43,7 +45,7 @@ export function PriceChartLarge({ ohlcv, levels }: PriceChartLargeProps) {
     <Panel style={{ display: 'flex', flexDirection: 'column' }}>
       <PanelHeader
         title="PRICE ACTION"
-        note={`${n} candles · 1D`}
+        note={`${n} candles · ${timeframe ?? "1D"}`}
         right={<MockBadge env={ohlcv} />}
       />
       <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>

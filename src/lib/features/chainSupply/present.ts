@@ -4,7 +4,7 @@ import type { ChainSupplyMetrics } from './types';
 export function toChainSupplyLabels(m: ChainSupplyMetrics) {
   return {
     activeAddresses: fmtCompact(m.activeAddresses, ''),
-    newAddresses: fmtCompact(m.newAddresses, ''),
+    volume24hBtc: m.volume24hBtc == null ? '—' : `${fmtCompact(m.volume24hBtc, '')} BTC`,
     txCount: fmtCompact(m.txCount, ''),
     hashRate: `${m.hashRate.toFixed(2)} EH/s`,
     coldPct: fmtPct(m.coldPct, false),

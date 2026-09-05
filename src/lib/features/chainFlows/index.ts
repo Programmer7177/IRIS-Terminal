@@ -10,5 +10,5 @@ export const getChainFlows = defineFeature<ChainFlowsArgs, ChainFlowsData>({
   mock: mockChainFlows,
 });
 
-export type { ChainFlowsData, ChainFlowsArgs };
-export { toChainFlowsLabels, getChainFlowsColor } from './present';
+export type { ChainFlowsData, ChainFlowsArgs, FlowTransfer } from './types';
+export { toChainFlowsLabels, getChainFlowsColor, toFlowTransferRow } from './present';

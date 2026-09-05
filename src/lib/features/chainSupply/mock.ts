@@ -6,7 +6,7 @@ export function mockChainSupply({ symbol = 'BTC' }: ChainSupplyArgs): ChainSuppl
   
   return {
     activeAddresses: 900000 + Math.floor(r() * 200000),
-    newAddresses: 50000 + Math.floor(r() * 30000),
+    volume24hBtc: 200000 + Math.floor(r() * 400000),
     txCount: 400000 + Math.floor(r() * 100000),
     hashRate: 500 + r() * 100,
     coldPct: 60 + r() * 10,

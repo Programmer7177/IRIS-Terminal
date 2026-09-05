@@ -5,7 +5,7 @@ import type { SentimentData, SentimentArgs } from './types';
 
 export const getSentiment = defineFeature<SentimentArgs, SentimentData>({
   key: 'sentiment',
-  source: 'twitterapi_io',
+  source: 'rss',
   live: fetchSentiment,
   mock: mockSentiment,
 });

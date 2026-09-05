@@ -1,11 +1,13 @@
 import { getChainFlows } from '@/lib/features/chainFlows';
+import { ExchangeReservePanel } from '@/components/features/flows/ExchangeReservePanel';
+import { FlowRadar } from '@/components/features/flows/FlowRadar';
 import { NetflowChart } from '@/components/features/flows/NetflowChart';
 import { FlowsTable } from '@/components/features/flows/FlowsTable';
 
 export const revalidate = 30;
 
 export default async function ChainFlowsPage() {
-  const [chainFlows] = await Promise.all([getChainFlows({ symbol: 'BTC' })]);
+  const chainFlows = await getChainFlows({ symbol: 'BTC' });
 
   return (
     <div
@@ -17,8 +19,16 @@ export default async function ChainFlowsPage() {
         minWidth: 0,
       }}
     >
-      <NetflowChart flows={chainFlows} />
-      <FlowsTable flows={chainFlows} />
+      <ExchangeReservePanel flows={chainFlows} />
+      <FlowRadar flows={chainFlows} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, minWidth: 0 }}>
+        <div style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <NetflowChart flows={chainFlows} />
+        </div>
+        <div style={{ flex: '1 1 380px', minWidth: 0 }}>
+          <FlowsTable flows={chainFlows} />
+        </div>
+      </div>
     </div>
   );
 }

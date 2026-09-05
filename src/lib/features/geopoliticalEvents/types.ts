@@ -1,14 +1,22 @@
-export type EventType = 'regulatory' | 'conflict' | 'macro' | 'infrastructure';
-export type EventSentiment = 'positive' | 'negative' | 'neutral';
+import type { EventCategory } from '@/lib/geo/classify';
 
-export interface GeopoliticalEvent {
-  country: string;
-  eventType: EventType;
-  sentiment: EventSentiment;
+export type { EventCategory };
+
+export interface GeoEvent {
+  id: string;
   headline: string;
-  date?: string;
+  source: string;
+  url?: string;
+  publishedAt: number; // ms epoch
+  category: EventCategory;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  lat: number;
+  lon: number;
+  iso2: string;
+  place: string;
+  impact: number; // 0..100
 }
 
-export interface GeopoliticalEventsArgs {
+export interface GeoEventsArgs {
   limit?: number;
 }

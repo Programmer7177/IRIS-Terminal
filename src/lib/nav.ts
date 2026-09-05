@@ -81,20 +81,19 @@ export const SECTIONS: Section[] = [
     icon: 'M7 7h10v10H7zM3 12h4M17 12h4M12 3v4M12 17v4',
     subs: [
       { slug: 'supply', label: 'SUPPLY' },
+      { slug: 'network', label: 'NETWORK' },
       { slug: 'flows', label: 'FLOWS' },
+      { slug: 'derivatives', label: 'DERIVATIVES' },
     ],
   },
   {
     key: 'sentiment',
-    label: 'Sentiment',
-    title: 'SENTIMENT',
-    blurb: 'Social · news · fear & greed',
+    label: 'Global Sentiment',
+    title: 'GLOBAL SENTIMENT',
+    blurb: 'Social · fear & greed · world events',
     group: 'Evidence',
     icon: 'M21 12a9 9 0 1 1-3.2-6.9M8 10h.01M15 10h.01M9 15c1.5 1.2 4.5 1.2 6 0',
-    subs: [
-      { slug: 'social', label: 'SOCIAL' },
-      { slug: 'news', label: 'NEWS' },
-    ],
+    subs: [{ slug: null, label: 'GLOBAL SENTIMENT' }],
   },
   {
     key: 'macro',
@@ -171,6 +170,30 @@ export const DEFAULT_COUNTRY: CountryCode = 'US';
 export const TIMEFRAMES = ['1D', '7D', '1M', '3M', '1Y', 'ALL'] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 export const DEFAULT_TIMEFRAME: Timeframe = '1Y';
+
+/**
+ * Each timeframe maps to a distinct candle interval + how many candles to pull.
+ * The interval matters as much as the count: a spot indicator (last RSI / MACD /
+ * EMA point) depends only on the interval, so two pills that share an interval
+ * show identical technicals no matter their window. Every pill therefore gets
+ * its own interval. `4h`/`1w` and anything over ~290 candles are served by
+ * Kraken (`ohlcv/live.ts` + `indicators/live.ts` route by interval).
+ */
+export const TIMEFRAME_SPEC: Record<Timeframe, { interval: string; limit: number }> = {
+  '1D': { interval: '15m', limit: 96 },
+  '7D': { interval: '1h', limit: 168 },
+  '1M': { interval: '4h', limit: 180 },
+  '3M': { interval: '6h', limit: 300 },
+  '1Y': { interval: '1d', limit: 365 },
+  ALL: { interval: '1w', limit: 260 },
+};
+
+/** Validate a raw `?tf=` value, falling back to the default. */
+export function resolveTimeframe(raw: string | undefined | null): Timeframe {
+  return (TIMEFRAMES as readonly string[]).includes(raw ?? '')
+    ? (raw as Timeframe)
+    : DEFAULT_TIMEFRAME;
+}
 
 /** Cookie holding the per-section sub-tab memory, read by middleware. */
 export const SUB_COOKIE = 'iris_sub';

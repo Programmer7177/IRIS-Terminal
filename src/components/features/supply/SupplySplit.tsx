@@ -59,7 +59,7 @@ export function SupplySplit({ supply }: SupplySplitProps) {
           <tbody>
             {[
               ['ACTIVE ADDRESSES', labels.activeAddresses],
-              ['NEW ADDRESSES', labels.newAddresses],
+              ['VOLUME 24H', labels.volume24hBtc],
               ['TX COUNT', labels.txCount],
               ['HASH RATE', labels.hashRate],
               ['COLD SUPPLY', labels.coldPct],

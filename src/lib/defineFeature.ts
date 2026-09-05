@@ -1,5 +1,6 @@
 import { type Envelope, type SourceKey, live, mocked } from '@/lib/envelope';
 import { getSourceStatus } from '@/lib/sourceStatus';
+import { unlockNoteFor } from '@/lib/sources';
 
 export interface FeatureSpec<A, T> {
   /** Stable identifier used in logs. */
@@ -32,28 +33,34 @@ export function defineFeature<A, T>(spec: FeatureSpec<A, T>) {
   return async function get(args: A): Promise<Envelope<T>> {
     const status = await getSourceStatus(spec.source);
 
+    // `data_source_status` is the authority once it has a row; the static
+    // catalogue in `sources.ts` covers the case that is actually common today —
+    // an unconfigured checkout, where a MOCK badge with no unlock note tells the
+    // reader nothing about how to fix it.
+    const unlockNote = status?.unlock_note ?? unlockNoteFor(spec.source);
+
     if (status && (!status.is_enabled || status.mode === 'failed' || status.mode === 'degraded' || status.mode === 'mock')) {
       return mocked(
         spec.mock(args),
         spec.source,
         !status.is_enabled ? 'source_disabled' : 'source_failed',
-        status.unlock_note,
+        unlockNote,
       );
     }
 
     try {
       const row = await spec.live(args);
-      if (!row) return mocked(spec.mock(args), spec.source, 'no_rows', status?.unlock_note ?? null);
+      if (!row) return mocked(spec.mock(args), spec.source, 'no_rows', unlockNote);
       // Rows the worker wrote in MOCK_MODE are real rows carrying fake numbers.
       // They still get badged — there is only one way for synthetic data to
       // reach a pixel, and it is always labelled.
       if (row.synthetic) {
-        return mocked(row.data, spec.source, 'synthetic_rows', status?.unlock_note ?? null);
+        return mocked(row.data, spec.source, 'synthetic_rows', unlockNote);
       }
       return live(row.data, spec.source, row.asOf);
     } catch (err) {
       console.error(`[feature:${spec.key}]`, err);
-      return mocked(spec.mock(args), spec.source, 'query_error', status?.unlock_note ?? null);
+      return mocked(spec.mock(args), spec.source, 'query_error', unlockNote);
     }
   };
 }

@@ -13,4 +13,8 @@ export interface IndicatorData {
 
 export interface IndicatorArgs {
   symbol?: string;
+  /** Candle interval to compute on, e.g. '1h' or '1d'. Driven by `?tf=`. */
+  interval?: string;
+  /** How many candles to pull. Clamped up internally so the MAs have runway. */
+  limit?: number;
 }

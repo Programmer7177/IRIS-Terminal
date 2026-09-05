@@ -1,4 +1,5 @@
 import { getIndicators } from '@/lib/features/indicators';
+import { TIMEFRAME_SPEC, resolveTimeframe } from '@/lib/nav';
 import { PanelGrid } from '@/components/primitives';
 import { RsiOscillator } from '@/components/features/technicals/RsiOscillator';
 import { MacdHistogram } from '@/components/features/technicals/MacdHistogram';
@@ -7,8 +8,16 @@ import { BollingerState } from '@/components/features/technicals/BollingerState'
 
 export const revalidate = 30;
 
-export default async function TechnicalsPage() {
-  const [indicators] = await Promise.all([getIndicators({ symbol: 'BTC-USD' })]);
+export default async function TechnicalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tf?: string }>;
+}) {
+  const tf = resolveTimeframe((await searchParams).tf);
+  const { interval, limit } = TIMEFRAME_SPEC[tf];
+  const [indicators] = await Promise.all([
+    getIndicators({ symbol: 'BTC-USD', interval, limit }),
+  ]);
 
   return (
     <div

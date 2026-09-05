@@ -43,15 +43,18 @@ export function PanelGrid({
   columns,
   rows,
   style,
+  className,
 }: {
   children: ReactNode;
   /** e.g. `minmax(0,1fr) minmax(230px,290px)` */
   columns?: string;
   rows?: string;
   style?: CSSProperties;
+  className?: string;
 }) {
   return (
     <div
+      className={className}
       style={{
         display: 'grid',
         gap: 1,

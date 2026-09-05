@@ -1,8 +1,9 @@
-import { Panel, PanelHeader, ProxyBadge, MockBadge, SourceFootnote } from '@/components/primitives';
+import { Panel, PanelHeader, MockBadge, SourceFootnote } from '@/components/primitives';
 import type { Envelope } from '@/lib/envelope';
 import type { ChainFlowsData } from '@/lib/features/chainFlows';
 import { toChainFlowsLabels, getChainFlowsColor } from '@/lib/features/chainFlows';
 import { fmtCompact } from '@/lib/format';
+import { TRACKED_SUBSET_NOTE } from '@/lib/onchain/exchangeRegistry';
 
 export interface NetflowChartProps {
   flows: Envelope<ChainFlowsData>;
@@ -15,7 +16,7 @@ export function NetflowChart({ flows }: NetflowChartProps) {
   const f = flows.data;
   const labels = toChainFlowsLabels(f);
   const net = f.outflow - f.inflow;
-  const netBtc = `${fmtCompact(net / 1e8, '')} BTC`;
+  const netBtc = `${fmtCompact(net, '')} BTC`;
   const max = Math.max(f.inflow, f.outflow, Math.abs(net), 1);
 
   const rows = [
@@ -28,13 +29,8 @@ export function NetflowChart({ flows }: NetflowChartProps) {
     <Panel style={{ display: 'flex', flexDirection: 'column' }}>
       <PanelHeader
         title="EXCHANGE NETFLOW"
-        note="aggregate proxy"
-        right={
-          <>
-            <ProxyBadge title="Aggregate exchange-wallet proxy, not true address clustering." />
-            <MockBadge env={flows} />
-          </>
-        }
+        note={`${TRACKED_SUBSET_NOTE} · SNAPSHOT · NO HISTORY`}
+        right={<MockBadge env={flows} />}
       />
       <div style={{ padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>

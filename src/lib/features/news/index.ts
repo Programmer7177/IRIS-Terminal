@@ -11,4 +11,10 @@ export const getNews = defineFeature<NewsArgs, NewsArticle[]>({
 });
 
 export type { NewsArticle, NewsArgs };
-export { toNewsLabel, getNewsSentimentColor } from './present';
+export {
+  toNewsLabel,
+  getNewsSentimentColor,
+  newsSentimentWord,
+  newsCategoryColor,
+  newsImpactColor,
+} from './present';

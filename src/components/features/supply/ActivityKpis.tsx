@@ -22,7 +22,12 @@ export function ActivityKpis({ supply }: ActivityKpisProps) {
         }}
       >
         <StatTile label="ACTIVE ADDRESSES" value={labels.activeAddresses} detail="24h" />
-        <StatTile label="NEW ADDRESSES" value={labels.newAddresses} tone="blue" detail="24h" />
+        <StatTile
+          label="VOLUME 24H"
+          value={labels.volume24hBtc}
+          tone={supply.data.volume24hBtc == null ? 'dim' : 'blue'}
+          detail={supply.data.volume24hBtc == null ? 'blockchair unavailable' : 'transferred'}
+        />
         <StatTile label="TX COUNT" value={labels.txCount} detail="24h" />
         <StatTile label="HASH RATE" value={labels.hashRate} tone="amber" detail="network" />
       </div>

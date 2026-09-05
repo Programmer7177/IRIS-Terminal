@@ -19,7 +19,8 @@ export function TimeframePills() {
   });
 
   // Only price-series pages have a meaningful timeframe.
-  const relevant = section && ['overview', 'market', 'quant', 'forecast', 'chain'].includes(section.key);
+  // Only pages that actually re-fetch on `?tf=` show the pills.
+  const relevant = section && ['overview', 'market'].includes(section.key);
   if (!relevant) return null;
 
   return (

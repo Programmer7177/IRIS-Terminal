@@ -19,11 +19,9 @@ function getDirectionTone(direction: string): Tone {
 
 export function SignalCards({
   weeklyForecast,
-  fearGreed,
   confluence,
 }: SignalCardsProps) {
   const wf = weeklyForecast.data;
-  const fg = fearGreed.data;
   const conf = confluence.data;
 
   return (
@@ -55,26 +53,7 @@ export function SignalCards({
           <SourceFootnote env={confluence} />
         </div>
 
-        {/* Card 3: Fear & Greed */}
-        <div style={{ background: 'var(--panel)', display: 'flex', flexDirection: 'column' }}>
-          <KpiCard
-            label="FEAR & GREED"
-            value={`${fg.value} ${fg.classification === 'Greed' || fg.classification === 'Extreme Greed' ? 'GREED' : 'FEAR'}`}
-            tone={
-              fg.classification === 'Extreme Greed' || fg.classification === 'Greed'
-                ? 'up'
-                : fg.classification === 'Extreme Fear' || fg.classification === 'Fear'
-                  ? 'down'
-                  : 'txt'
-            }
-            detail={fg.classification}
-            pct={fg.value}
-            right={<MockBadge env={fearGreed} />}
-          />
-          <SourceFootnote env={fearGreed} />
-        </div>
-
-        {/* Card 4: Weekly Forecast Direction */}
+        {/* Card 3: Weekly Forecast Direction */}
         <div style={{ background: 'var(--panel)', display: 'flex', flexDirection: 'column' }}>
           <KpiCard
             label="WEEKLY OUTLOOK"

@@ -1,60 +1,59 @@
-import { asRow, getSupabase } from '@/lib/supabase/server';
+/**
+ * Live BTC snapshot — Coinbase for price and 24h stats, CoinGecko for the
+ * market-structure fields Coinbase does not carry (market cap, dominance, 7d/30d
+ * returns). Realised vol is computed from Coinbase daily closes.
+ *
+ * Returns the same `BtcSnapshot` shape the mock does. Any upstream failure
+ * throws; `defineFeature` turns that into a badged placeholder.
+ */
+import { getStats, getSpot, getCandles } from '@/lib/sources/coinbase';
+import { getMarket, getDominancePct } from '@/lib/sources/coingecko';
+import { realizedVolPct } from '@/lib/quant/series';
 import type { BtcSnapshot, SnapshotArgs } from './types';
 
-/** The exact columns this query selects, in `market_snapshot`. */
-interface SnapshotRowDb {
-  last_price: number | null;
-  change_24h_abs: number | null;
-  change_24h_pct: number | null;
-  high_24h: number | null;
-  low_24h: number | null;
-  return_7d_pct: number | null;
-  return_30d_pct: number | null;
-  volume_24h_usd: number | null;
-  market_cap_usd: number | null;
-  dominance_pct: number | null;
-  realized_vol_30d_pct: number | null;
-  is_synthetic: boolean;
-  fetched_at: string;
-}
+export async function fetchSnapshot(_args: SnapshotArgs) {
+  void _args;
 
-const SELECT =
-  'last_price, change_24h_abs, change_24h_pct, high_24h, low_24h, return_7d_pct, ' +
-  'return_30d_pct, volume_24h_usd, market_cap_usd, dominance_pct, ' +
-  'realized_vol_30d_pct, is_synthetic, fetched_at';
+  const [stats, spot, dailies, market, dominance] = await Promise.all([
+    getStats('BTC-USD'),
+    getSpot('BTC-USD').catch(() => null),
+    getCandles('1d', 120, 'BTC-USD').catch(() => []),
+    getMarket().catch(() => null),
+    getDominancePct().catch(() => null),
+  ]);
 
-/** Reads the newest `market_snapshot` row. `null` means the job has not run. */
-export async function fetchSnapshot({ symbol }: SnapshotArgs) {
-  const sb = getSupabase();
-  if (!sb) return null;
+  const last = spot?.price ?? stats.last;
+  const change24hAbs = last - stats.open;
+  const change24hPct = stats.open > 0 ? (change24hAbs / stats.open) * 100 : 0;
+  const closes = dailies.map((c) => c.close);
 
-  const { data, error } = await sb
-    .from('market_snapshot')
-    .select(SELECT)
-    .eq('symbol', symbol)
-    .order('as_of', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const return7dPct =
+    market?.price_change_percentage_7d_in_currency ??
+    pctFromCloses(closes, 7);
+  const return30dPct =
+    market?.price_change_percentage_30d_in_currency ??
+    pctFromCloses(closes, 30);
 
-  if (error) throw error;
-  if (!data) return null;
-
-  const row = asRow<SnapshotRowDb>(data);
-  const num = (v: number | null) => (v == null ? 0 : Number(v));
-
-  const out: BtcSnapshot = {
-    last: num(row.last_price),
-    change24hAbs: num(row.change_24h_abs),
-    change24hPct: num(row.change_24h_pct),
-    high24h: num(row.high_24h),
-    low24h: num(row.low_24h),
-    return7dPct: num(row.return_7d_pct),
-    return30dPct: num(row.return_30d_pct),
-    volume24hUsd: num(row.volume_24h_usd),
-    marketCapUsd: num(row.market_cap_usd),
-    dominancePct: num(row.dominance_pct),
-    realizedVol30dPct: num(row.realized_vol_30d_pct),
+  const data: BtcSnapshot = {
+    last,
+    change24hAbs,
+    change24hPct,
+    high24h: stats.high,
+    low24h: stats.low,
+    return7dPct,
+    return30dPct,
+    volume24hUsd: (market?.total_volume ?? stats.volume * last),
+    marketCapUsd: market?.market_cap ?? 0,
+    dominancePct: dominance ?? 0,
+    realizedVol30dPct: closes.length > 10 ? realizedVolPct(closes, 30) : 0,
   };
 
-  return { data: out, asOf: row.fetched_at, synthetic: Boolean(row.is_synthetic) };
+  return { data, asOf: new Date().toISOString(), synthetic: false };
+}
+
+function pctFromCloses(closes: number[], daysBack: number): number {
+  if (closes.length <= daysBack) return 0;
+  const now = closes[closes.length - 1];
+  const then = closes[closes.length - 1 - daysBack];
+  return then > 0 ? ((now - then) / then) * 100 : 0;
 }
